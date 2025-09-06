@@ -23,46 +23,41 @@ const LessonView = () => {
   const [isCompleted, setIsCompleted] = useState(false)
 
   useEffect(() => {
-    // In a real app, we'd fetch lesson data by ID
-    // For now, we'll mock this with the current course data
-    const mockLesson: Lesson = {
-      id: id || '1',
-      topic: 'AI Product Management',
-      level: 'Beginner',
-      videoId: 'dQw4w9WgXcQ', // Mock YouTube video ID
-      title: 'Introduction to AI Product Management',
-      durationMin: 15,
-      summary: 'Learn the fundamentals of AI product management and how to build successful AI products.',
-      keyPoints: [
-        'Understanding AI capabilities and limitations',
-        'Building cross-functional AI teams',
-        'Data strategy for AI products',
-        'AI ethics and responsible development',
-        'Measuring AI product success'
-      ],
-      glossary: [
-        { term: 'Machine Learning', definition: 'A subset of AI that learns from data to make predictions' },
-        { term: 'Product-Market Fit', definition: 'When your product satisfies market demand' },
-        { term: 'MVP', definition: 'Minimum Viable Product - basic version to test market response' }
-      ],
-      quiz: [
-        {
-          q: 'What is the most important factor when building AI products?',
-          options: ['Having the best algorithms', 'Understanding user needs', 'Using the latest technology', 'Having big data'],
-          answerIndex: 1,
-          explanation: 'Understanding user needs is crucial because AI should solve real problems that users face.'
-        },
-        {
-          q: 'What does MVP stand for in product management?',
-          options: ['Most Valuable Player', 'Minimum Viable Product', 'Maximum Value Proposition', 'Multi-Version Platform'],
-          answerIndex: 1,
-          explanation: 'MVP stands for Minimum Viable Product - a basic version used to test market response.'
+    // Get the course data from localStorage
+    const courseData = localStorage.getItem('courseData')
+    if (courseData) {
+      try {
+        const course = JSON.parse(courseData)
+        setAllLessons(course.lessons)
+        
+        // Find the specific lesson by ID
+        const foundLesson = course.lessons.find((l: Lesson) => l.id === id)
+        if (foundLesson) {
+          setLesson(foundLesson)
+          const index = course.lessons.findIndex((l: Lesson) => l.id === id)
+          setCurrentLessonIndex(index)
+        } else {
+          // Fallback to first lesson if ID not found
+          setLesson(course.lessons[0])
+          setCurrentLessonIndex(0)
         }
-      ]
+      } catch (error) {
+        console.error('Error parsing course data:', error)
+        toast({
+          title: "Error",
+          description: "Failed to load lesson data. Please try building a course first.",
+          variant: "destructive"
+        })
+        navigate('/')
+      }
+    } else {
+      toast({
+        title: "No Course Data",
+        description: "Please build a course first before viewing lessons.",
+        variant: "destructive"
+      })
+      navigate('/')
     }
-
-    setLesson(mockLesson)
-    setAllLessons([mockLesson]) // In real app, this would be the full course
     
     // Check if lesson is completed
     const completed = JSON.parse(localStorage.getItem('completedLessonIds') || '[]')
@@ -71,7 +66,7 @@ const LessonView = () => {
     // Load saved reflection notes
     const savedNotes = localStorage.getItem(`reflection_${id}`)
     if (savedNotes) setReflectionNotes(savedNotes)
-  }, [id])
+  }, [id, navigate, toast])
 
   const markAsCompleted = () => {
     const completed = JSON.parse(localStorage.getItem('completedLessonIds') || '[]')
