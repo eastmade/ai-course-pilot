@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Progress } from '@/components/ui/progress'
 import { Clock, BookOpen, Play, ArrowLeft } from 'lucide-react'
 import { Course, Lesson } from '@/types'
-import { useToast } from '@/components/ui/use-toast'
+import { useToast } from '@/hooks/use-toast'
 
 const CourseDashboard = () => {
   const [searchParams] = useSearchParams()

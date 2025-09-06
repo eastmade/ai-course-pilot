@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { ArrowLeft, ArrowRight, ExternalLink, CheckCircle } from 'lucide-react'
 import { Lesson } from '@/types'
-import { useToast } from '@/components/ui/use-toast'
+import { useToast } from '@/hooks/use-toast'
 
 const LessonView = () => {
   const { id } = useParams<{ id: string }>()
