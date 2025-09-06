@@ -40,19 +40,43 @@ serve(async (req) => {
       )
     }
 
-    // Search YouTube for videos
-    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(topic)}&type=video&maxResults=20&order=relevance&key=${youtubeApiKey}`
-    
-    const searchResponse = await fetch(searchUrl)
-    const searchData = await searchResponse.json()
+    // Enhanced search strategy with multiple queries for better relevance
+    const searchQueries = [
+      `${topic} tutorial learn beginner guide`,
+      `${topic} explained step by step`,
+      `${topic} course lesson introduction`,
+      `how to ${topic} basics fundamentals`
+    ]
 
-    if (!searchResponse.ok) {
-      throw new Error(`YouTube API error: ${searchData.error?.message || 'Unknown error'}`)
+    let allVideos: any[] = []
+    
+    // Search with multiple query strategies
+    for (const query of searchQueries) {
+      const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=15&order=relevance&key=${youtubeApiKey}&videoDuration=medium&videoDefinition=high&safeSearch=strict`
+      
+      const searchResponse = await fetch(searchUrl)
+      const searchData = await searchResponse.json()
+
+      if (!searchResponse.ok) {
+        console.warn(`YouTube API warning for query "${query}": ${searchData.error?.message}`)
+        continue
+      }
+
+      allVideos.push(...searchData.items)
+    }
+
+    // Remove duplicates by videoId
+    const uniqueVideos = allVideos.filter((video, index, self) => 
+      index === self.findIndex(v => v.id.videoId === video.id.videoId)
+    )
+
+    if (uniqueVideos.length === 0) {
+      throw new Error('No videos found for the given topic')
     }
 
     // Get detailed statistics for each video
-    const videoIds = searchData.items.map((item: any) => item.id.videoId).join(',')
-    const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics,contentDetails&id=${videoIds}&key=${youtubeApiKey}`
+    const videoIds = uniqueVideos.map((item: any) => item.id.videoId).join(',')
+    const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics,contentDetails,snippet&id=${videoIds}&key=${youtubeApiKey}`
     
     const statsResponse = await fetch(statsUrl)
     const statsData = await statsResponse.json()
@@ -62,7 +86,7 @@ serve(async (req) => {
     }
 
     // Combine search results with statistics and score them
-    const videoCandidates: VideoCandidate[] = searchData.items.map((item: any) => {
+    const videoCandidates: VideoCandidate[] = uniqueVideos.map((item: any) => {
       const stats = statsData.items.find((stat: any) => stat.id === item.id.videoId)
       const views = parseInt(stats?.statistics?.viewCount || '0')
       const duration = stats?.contentDetails?.duration || 'PT0S'
@@ -87,28 +111,48 @@ serve(async (req) => {
         const seconds = parseInt(durationMatch?.[3] || '0')
         const totalMinutes = hours * 60 + minutes + seconds / 60
 
-        // Scoring algorithm
+        // Enhanced AI-driven scoring algorithm
         let score = 0
         
-        // Duration score (prefer 5-30 minute videos)
-        if (totalMinutes >= 5 && totalMinutes <= 30) score += 30
-        else if (totalMinutes >= 2 && totalMinutes <= 45) score += 15
+        // Duration score (prefer educational-length videos)
+        if (totalMinutes >= 8 && totalMinutes <= 25) score += 40
+        else if (totalMinutes >= 5 && totalMinutes <= 35) score += 25
+        else if (totalMinutes >= 3 && totalMinutes <= 45) score += 10
         
-        // View count score (logarithmic scale)
-        if (video.views > 0) {
-          score += Math.min(Math.log10(video.views) * 5, 25)
+        // View count quality score (balanced approach)
+        if (video.views > 1000) {
+          const viewScore = Math.min(Math.log10(video.views / 1000) * 8, 30)
+          score += viewScore
         }
         
-        // Title relevance (simple keyword matching)
-        const titleWords = video.title.toLowerCase()
-        const topicWords = topic.toLowerCase().split(' ')
-        const matches = topicWords.filter(word => titleWords.includes(word)).length
-        score += (matches / topicWords.length) * 20
+        // Educational keywords bonus
+        const titleLower = video.title.toLowerCase()
+        const descLower = video.description.toLowerCase()
+        const educationalKeywords = ['tutorial', 'learn', 'guide', 'course', 'lesson', 'explained', 'introduction', 'beginner', 'step by step', 'how to', 'basics', 'fundamentals']
+        const educationalBonus = educationalKeywords.filter(keyword => 
+          titleLower.includes(keyword) || descLower.includes(keyword)
+        ).length
+        score += educationalBonus * 8
         
-        // Description relevance
-        const descWords = video.description.toLowerCase()
-        const descMatches = topicWords.filter(word => descWords.includes(word)).length
-        score += (descMatches / topicWords.length) * 10
+        // Topic relevance (improved keyword matching)
+        const topicWords = topic.toLowerCase().split(' ')
+        const titleMatches = topicWords.filter(word => titleLower.includes(word)).length
+        const descMatches = topicWords.filter(word => descLower.includes(word)).length
+        score += (titleMatches / topicWords.length) * 35
+        score += (descMatches / topicWords.length) * 15
+        
+        // Channel quality indicators
+        const channelLower = video.channel.toLowerCase()
+        const qualityChannelIndicators = ['academy', 'university', 'education', 'school', 'institute', 'tech', 'programming', 'coding']
+        const channelBonus = qualityChannelIndicators.filter(indicator => 
+          channelLower.includes(indicator)
+        ).length
+        score += channelBonus * 5
+        
+        // Penalize clickbait-style titles
+        const clickbaitWords = ['amazing', 'incredible', 'shocking', 'you won\'t believe', 'secret', 'hack']
+        const clickbaitPenalty = clickbaitWords.filter(word => titleLower.includes(word)).length
+        score -= clickbaitPenalty * 10
 
         return { ...video, score, durationMin: Math.round(totalMinutes) }
       })
