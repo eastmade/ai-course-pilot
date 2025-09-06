@@ -1,1 +1,13 @@
 project_id = "vbwgjtfgajrtielipcpt"
+
+[functions.build-course]
+verify_jwt = false
+
+[functions.curate]
+verify_jwt = false
+
+[functions.summarize]
+verify_jwt = false
+
+[functions.transcript]
+verify_jwt = false

@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { corsHeaders } from '../_shared/cors.ts'
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY')!
+const supabase = createClient(supabaseUrl, serviceRoleKey)
 
 interface Lesson {
   id: string
@@ -42,17 +47,10 @@ serve(async (req) => {
     console.log(`Building course for topic: ${topic}`)
 
     // Step 1: Curate videos
-    const curateResponse = await fetch(`${req.url.split('/api/')[0]}/api/curate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ topic })
-    })
-
-    if (!curateResponse.ok) {
+    const { data: videoCandidates, error: curateError } = await supabase.functions.invoke('curate', { body: { topic } })
+    if (curateError || !videoCandidates) {
       throw new Error('Failed to curate videos')
     }
-
-    const videoCandidates = await curateResponse.json()
     console.log(`Found ${videoCandidates.length} video candidates`)
 
     // Step 2: Process each video (transcript + summarize)
@@ -65,20 +63,20 @@ serve(async (req) => {
 
       try {
         // Get transcript
-        const transcriptResponse = await fetch(`${req.url.split('/api/')[0]}/api/transcript`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ videoId: video.videoId })
+        const { data: transcriptData, error: transcriptError } = await supabase.functions.invoke('transcript', {
+          body: { videoId: video.videoId }
         })
 
-        const transcriptData = await transcriptResponse.json()
-        
-        if (transcriptData.noTranscript) {
+        if (transcriptError) {
+          throw transcriptError
+        }
+
+        if (transcriptData?.noTranscript) {
           console.log(`No transcript available for video ${video.videoId}, using description`)
         }
 
-        const transcript = transcriptData.transcript
-        const hasTranscript = !transcriptData.noTranscript
+        const transcript = transcriptData?.transcript
+        const hasTranscript = !transcriptData?.noTranscript
 
         // Determine level based on position and complexity
         let levelGuess: 'Beginner' | 'Intermediate' | 'Advanced'
@@ -87,18 +85,16 @@ serve(async (req) => {
         else levelGuess = 'Advanced'
 
         // Summarize content
-        const summarizeResponse = await fetch(`${req.url.split('/api/')[0]}/api/summarize`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        const { data: lessonContent, error: summarizeError } = await supabase.functions.invoke('summarize', {
+          body: {
             transcript: hasTranscript ? transcript : null,
             title: video.title,
             description: !hasTranscript ? (transcript || video.description) : video.description,
             levelGuess
-          })
+          }
         })
 
-        if (!summarizeResponse.ok) {
+        if (summarizeError || !lessonContent) {
           console.log(`Failed to summarize video ${video.videoId}, creating fallback lesson`)
           
           // Create a basic lesson structure as fallback
@@ -131,8 +127,6 @@ serve(async (req) => {
           lessons.push(fallbackLesson)
           continue
         }
-
-        const lessonContent = await summarizeResponse.json()
 
         const lesson: Lesson = {
           id: `lesson_${i + 1}`,

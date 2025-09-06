@@ -8,6 +8,7 @@ import { Progress } from '@/components/ui/progress'
 import { Clock, BookOpen, Play, ArrowLeft } from 'lucide-react'
 import { Course, Lesson } from '@/types'
 import { useToast } from '@/hooks/use-toast'
+import { supabase } from '@/integrations/supabase/client'
 
 const CourseDashboard = () => {
   const [searchParams] = useSearchParams()
@@ -28,15 +29,12 @@ const CourseDashboard = () => {
     const buildCourse = async () => {
       try {
         setLoading(true)
-        const response = await fetch('/api/build-course', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ topic })
+        const { data: courseData, error } = await supabase.functions.invoke('build-course', {
+          body: { topic }
         })
         
-        if (!response.ok) throw new Error('Failed to build course')
+        if (error || !courseData) throw new Error('Failed to build course')
         
-        const courseData = await response.json()
         setCourse(courseData)
         
         // Calculate progress from localStorage
